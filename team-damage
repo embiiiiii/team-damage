@@ -1,0 +1,138 @@
+local lua_ref = gui.Reference("Visuals", "World","Extra")
+ 
+local lua_enable = gui.Checkbox(lua_ref, "enable", "Enable", false)
+local lua_enable_name = gui.Checkbox(lua_ref, "enable_name", "Enable Name", false)
+local lua_damage_color = gui.ColorPicker(lua_ref, "damage_color", "Damage Color", 255, 255, 255)
+local lua_kills_color = gui.ColorPicker(lua_ref, "kills_color", "Kills Color", 255, 255, 255)
+local lua_name_color = gui.ColorPicker(lua_ref, "name_color", "Name Color", 255, 255, 255)
+local lua_molotov_color = gui.ColorPicker(lua_ref, "molotov_color", "Molotov Color", 255, 255, 255)
+
+local font = draw.CreateFont("Verdana", 11, 800, 0)
+local font_outline = draw.CreateFont("Verdana", 11, 800, 1)
+local particle = {}
+
+local function team_damage_event(event)
+	local local_entity = entities:GetLocalPlayer()
+	if not local_entity then
+		particle = {}
+	end
+
+	for k, v in pairs(entities.FindByClass("CCSPlayer")) do
+		if v:GetTeamNumber() == local_entity:GetTeamNumber() then
+			if particle[v:GetIndex()] == nil then 
+				particle[v:GetIndex()] = {0, 0}
+			end
+		end
+	end
+
+	if event then
+		if event:GetName() == 'player_hurt' then
+			local userid = event:GetInt("userid")
+			local attacker_id = event:GetInt("attacker")
+			if entities.GetByUserID(userid):GetTeamNumber() == local_entity:GetTeamNumber() and entities.GetByUserID(attacker_id):GetTeamNumber() == local_entity:GetTeamNumber() and client.GetPlayerIndexByUserID(userid) ~= client.GetPlayerIndexByUserID(attacker_id) then
+
+				local attacker_index = client.GetPlayerIndexByUserID(event:GetInt("attacker"))
+
+				if particle[attacker_index] then
+					particle[attacker_index][1] = particle[attacker_index][1] + event:GetInt("dmg_health")
+				end
+			end
+		end
+
+		if event:GetName() == "player_death" then
+			local userid = event:GetInt("userid")
+			local attacker_id = event:GetInt("attacker")
+			if entities.GetByUserID(userid):GetTeamNumber() == local_entity:GetTeamNumber() and entities.GetByUserID(attacker_id):GetTeamNumber() == local_entity:GetTeamNumber() and client.GetPlayerIndexByUserID(userid) ~= client.GetPlayerIndexByUserID(attacker_id) then
+
+				local attacker_index = client.GetPlayerIndexByUserID(event:GetInt("attacker"))
+
+				if particle[attacker_index] then
+					particle[attacker_index][2] = particle[attacker_index][2] + 1
+				end
+			end
+		end
+	end
+end
+client.AllowListener("player_death")
+client.AllowListener("player_hurt")
+callbacks.Register('FireGameEvent', team_damage_event);
+callbacks.Register('Draw', team_damage_event);
+
+
+local function draw_on_molotov()
+	local c_inferno = entities.FindByClass("CInferno")
+	if c_inferno ~= nil then
+		for i = 1, #c_inferno do
+			local molotov = c_inferno[i]
+
+
+			local molotov_position = molotov:GetAbsOrigin()
+			local molotov_owner = molotov:GetPropEntity("m_hOwnerEntity")
+			local molotov_owner_index = molotov_owner:GetIndex()
+
+			for k, v in pairs(particle) do
+				if k == molotov_owner_index then
+					local molotov_2d_name = {client.WorldToScreen(Vector3(molotov_position.x, molotov_position.y, molotov_position.z + 35))}
+					local molotov_2d_damage = {client.WorldToScreen(Vector3(molotov_position.x, molotov_position.y, molotov_position.z + 25))}
+					local molotov_2d_kills = {client.WorldToScreen(Vector3(molotov_position.x, molotov_position.y, molotov_position.z + 15))}
+
+					if molotov_2d_name[1] ~= nil and molotov_2d_name[2] ~= nil and molotov_2d_damage[1] ~= nil and molotov_2d_damage[2] ~= nil and molotov_2d_kills[1] ~= nil and molotov_2d_kills[2] ~= nil then
+
+						draw.SetFont(font_outline)
+						draw.Color(10, 10, 10)
+						draw.Text(molotov_2d_name[1], molotov_2d_name[2], molotov_owner:GetName())
+						draw.Text(molotov_2d_damage[1], molotov_2d_damage[2], "damage " .. v[1] .. "/300")
+						draw.Text(molotov_2d_kills[1], molotov_2d_kills[2], "kills " .. v[2] .. "/3")
+
+
+						draw.SetFont(font)
+						draw.Color(255, 255, 255, 255)
+						draw.Text(molotov_2d_name[1], molotov_2d_name[2], molotov_owner:GetName())
+						draw.Color(lua_molotov_color:GetValue())
+						draw.Text(molotov_2d_damage[1], molotov_2d_damage[2], "damage " .. v[1] .. "/300")
+						draw.Color(255, 255, 255, 255)
+						draw.Text(molotov_2d_kills[1], molotov_2d_kills[2], "kills " .. v[2] .. "/3")
+					end
+				end
+			end
+		end
+	end
+end
+callbacks.Register('Draw', draw_on_molotov);
+
+
+local function draw_damage(builder)
+
+	if lua_enable:GetValue() then
+		local builder_entity = builder:GetEntity()
+
+		if builder_entity ~= nil then
+
+			local builder_index = builder_entity:GetIndex()	
+
+			if builder_index ~= nil then
+
+				for k, v in pairs(particle) do
+					if k == builder_index then
+						if v[2] ~= 0 or v[1] ~= 0 then
+							builder:Color(lua_kills_color:GetValue())
+							builder:AddTextTop("kills " .. v[2] .. "/3")
+
+							builder:Color(lua_damage_color:GetValue())
+							builder:AddTextTop("damage " .. v[1] .. "/300")
+
+							if lua_enable_name:GetValue() then
+								builder:Color(lua_name_color:GetValue())
+								builder:AddTextTop(builder_entity:GetName())
+								gui.SetValue("esp.overlay.friendly.name", false)
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end
+callbacks.Register("DrawESP", draw_damage)
+
+
